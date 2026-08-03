@@ -79,7 +79,17 @@ export class ClaudeBridge {
     const completed = await this.run(this.claudeBin, args, { cwd: workDir, signal });
     if (completed.code !== 0) {
       const details = (completed.stderr || completed.stdout || "no output").trim();
-      throw new Error(`Claude Code exited with code ${completed.code}: ${details}`);
+      let message = details;
+      try {
+        const payload = JSON.parse(completed.stdout);
+        message = payload.result || details;
+      } catch {
+        // Non-JSON process failures retain their stderr/stdout details.
+      }
+      if (/authenticate|oauth session expired|not logged in/i.test(message)) {
+        throw new Error("Claude Code authentication failed. Run `claude auth login` in a terminal, then retry.");
+      }
+      throw new Error(`Claude Code exited with code ${completed.code}: ${message}`);
     }
 
     let payload;

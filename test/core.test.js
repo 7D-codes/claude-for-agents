@@ -114,3 +114,32 @@ test("cancelling a background job signals the running Claude process", async () 
   assert.equal(signal.aborted, true);
   assert.deepEqual(bridge.status(job.jobId), { jobId: job.jobId, state: "cancelled" });
 });
+
+const { runProcess } = await import("../src/runner.js");
+
+test("runner captures a subprocess exit code and output", async () => {
+  const completed = await runProcess(
+    process.execPath,
+    ["-e", "console.log('hello'); console.error('warning')"],
+    {},
+  );
+
+  assert.equal(completed.code, 0);
+  assert.equal(completed.stdout, "hello\n");
+  assert.equal(completed.stderr, "warning\n");
+});
+
+test("authentication errors give an actionable Claude Code login instruction", async () => {
+  const bridge = new ClaudeBridge({
+    run: async () => ({
+      code: 1,
+      stdout: JSON.stringify({ is_error: true, result: "Failed to authenticate: OAuth session expired and could not be refreshed" }),
+      stderr: "",
+    }),
+  });
+
+  await assert.rejects(
+    () => bridge.delegate({ task: "Implement feature X", workDir: "/tmp/project" }),
+    /Claude Code authentication failed\. Run `claude auth login` in a terminal, then retry\./,
+  );
+});

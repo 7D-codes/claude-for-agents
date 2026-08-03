@@ -1,0 +1,119 @@
+#!/usr/bin/env node
+import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { ClaudeBridge } from "./src/core.js";
+import { runProcess } from "./src/runner.js";
+
+const claudeBin = process.env.CLAUDE_BIN || "claude";
+const bridge = new ClaudeBridge({ claudeBin, run: runProcess });
+const server = new McpServer({ name: "claude-for-hermes", version: "0.1.0" });
+
+function projectDir(input) {
+  if (!input) return undefined;
+  const expanded = input === "~" ? homedir() : input.replace(/^~\//, `${homedir()}/`);
+  const directory = resolve(expanded);
+  if (!existsSync(directory) || !statSync(directory).isDirectory()) {
+    throw new Error(`work_dir is not an existing directory: ${directory}`);
+  }
+  return directory;
+}
+
+function result(outcome) {
+  return {
+    content: [{
+      type: "text",
+      text: JSON.stringify({ session_id: outcome.sessionId, result: outcome.result }, null, 2),
+    }],
+  };
+}
+
+function errorMessage(error) {
+  return { content: [{ type: "text", text: `Error: ${error.message}` }], isError: true };
+}
+
+const delegateSchema = {
+  task: z.string().min(1),
+  work_dir: z.string().optional(),
+  model: z.string().optional(),
+  max_turns: z.number().int().min(1).max(30).default(10),
+  background: z.boolean().default(false),
+};
+
+server.tool(
+  "claude_delegate",
+  "Delegate a coding task to Claude Code. Captures an exact Claude session ID for follow-up.",
+  delegateSchema,
+  async ({ task, work_dir, model, max_turns, background }) => {
+    try {
+      const input = { task, workDir: projectDir(work_dir), model, maxTurns: max_turns };
+      if (!background) return result(await bridge.delegate(input));
+      const job = bridge.delegateBackground(input);
+      job.done.catch(() => {});
+      return { content: [{ type: "text", text: JSON.stringify({ job_id: job.jobId, state: "running" }) }] };
+    } catch (error) {
+      return errorMessage(error);
+    }
+  },
+);
+
+server.tool(
+  "claude_continue",
+  "Continue a Claude Code session by its exact session ID. Use IDs returned by claude_delegate.",
+  {
+    session_id: z.string().min(1),
+    prompt: z.string().min(1),
+    max_turns: z.number().int().min(1).max(30).default(10),
+  },
+  async ({ session_id, prompt, max_turns }) => {
+    try {
+      return result(await bridge.continue({ sessionId: session_id, prompt, maxTurns: max_turns }));
+    } catch (error) {
+      return errorMessage(error);
+    }
+  },
+);
+
+server.tool(
+  "claude_review",
+  "Run a read-only Claude Code review. Claude may read files and git diff/status only; it cannot edit.",
+  { work_dir: z.string(), scope: z.string().default("current changes") },
+  async ({ work_dir, scope }) => {
+    try {
+      return result(await bridge.review({ workDir: projectDir(work_dir), scope }));
+    } catch (error) {
+      return errorMessage(error);
+    }
+  },
+);
+
+server.tool(
+  "claude_status",
+  "Get the current state and result of a background Claude Code job.",
+  { job_id: z.string().min(1) },
+  async ({ job_id }) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(bridge.status(job_id), null, 2) }] };
+    } catch (error) {
+      return errorMessage(error);
+    }
+  },
+);
+
+server.tool(
+  "claude_cancel",
+  "Cancel a currently running background Claude Code job.",
+  { job_id: z.string().min(1) },
+  async ({ job_id }) => {
+    try {
+      return { content: [{ type: "text", text: JSON.stringify(bridge.cancel(job_id), null, 2) }] };
+    } catch (error) {
+      return errorMessage(error);
+    }
+  },
+);
+
+await server.connect(new StdioServerTransport());
