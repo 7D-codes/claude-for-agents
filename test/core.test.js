@@ -72,3 +72,28 @@ test("review is constrained to read and git diff commands", async () => {
     "Review current changes for bugs, security issues, regressions, and missing tests. Scope: current changes. Do not edit files or run state-changing commands.",
   ]);
 });
+
+test("background delegation exposes tracked status after completion", async () => {
+  let resolveRun;
+  const bridge = new ClaudeBridge({
+    claudeBin: "/usr/local/bin/claude",
+    run: () => new Promise((resolve) => { resolveRun = resolve; }),
+  });
+
+  const job = bridge.delegateBackground({ task: "Implement feature X", workDir: "/tmp/project" });
+  assert.deepEqual(bridge.status(job.jobId), { jobId: job.jobId, state: "running" });
+
+  resolveRun({
+    code: 0,
+    stdout: JSON.stringify({ type: "result", subtype: "success", session_id: "session-background", result: "complete" }),
+    stderr: "",
+  });
+  await job.done;
+
+  assert.deepEqual(bridge.status(job.jobId), {
+    jobId: job.jobId,
+    state: "completed",
+    sessionId: "session-background",
+    result: "complete",
+  });
+});

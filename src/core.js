@@ -3,6 +3,33 @@ export class ClaudeBridge {
     this.claudeBin = claudeBin;
     this.run = run;
     this.sessions = new Map();
+    this.jobs = new Map();
+    this.nextJobId = 1;
+  }
+
+  delegateBackground(input) {
+    const jobId = `job-${this.nextJobId++}`;
+    const job = { jobId, state: "running" };
+    this.jobs.set(jobId, job);
+    const done = this.delegate(input).then(
+      (outcome) => {
+        Object.assign(job, { state: "completed", sessionId: outcome.sessionId, result: outcome.result });
+        return outcome;
+      },
+      (error) => {
+        Object.assign(job, { state: "failed", error: error.message });
+        throw error;
+      },
+    );
+    job.done = done;
+    return { jobId, done };
+  }
+
+  status(jobId) {
+    const job = this.jobs.get(jobId);
+    if (!job) throw new Error(`Unknown Claude job: ${jobId}`);
+    const { done, ...status } = job;
+    return status;
   }
 
   async delegate({ task, workDir, model, maxTurns = 10 }) {
