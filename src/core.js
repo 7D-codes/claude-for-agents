@@ -25,6 +25,17 @@ export class ClaudeBridge {
     return { ...outcome, args };
   }
 
+  async review({ workDir, scope = "current changes" }) {
+    const prompt = "Review current changes for bugs, security issues, regressions, and missing tests. " +
+      `Scope: ${scope}. Do not edit files or run state-changing commands.`;
+    const args = [
+      "-p", "--output-format", "json", "--max-turns", "5",
+      "--allowedTools", "Read,Bash(git diff *),Bash(git status *)", prompt,
+    ];
+    const outcome = await this.#invoke(args, workDir);
+    return { ...outcome, args };
+  }
+
   async #invoke(args, workDir) {
     const completed = await this.run(this.claudeBin, args, { cwd: workDir });
     if (completed.code !== 0) {
