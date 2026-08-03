@@ -50,6 +50,29 @@ test("continue resumes the exact stored session rather than directory latest", a
   ]);
 });
 
+test("continue can switch the model while retaining the exact session", async () => {
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    claudeBin: "/usr/local/bin/claude",
+    run: async (command, args) => {
+      calls.push({ command, args });
+      return {
+        code: 0,
+        stdout: JSON.stringify({ type: "result", subtype: "success", session_id: "session-123", result: "switched" }),
+        stderr: "",
+      };
+    },
+  });
+  await bridge.delegate({ task: "Implement feature X", workDir: "/tmp/project" });
+
+  await bridge.continue({ sessionId: "session-123", prompt: "Use Haiku now", model: "haiku" });
+
+  assert.deepEqual(calls[1].args, [
+    "-p", "--output-format", "json", "--max-turns", "10", "--model", "haiku",
+    "--dangerously-skip-permissions", "--resume", "session-123", "Use Haiku now",
+  ]);
+});
+
 test("review is constrained to read and git diff commands", async () => {
   const calls = [];
   const bridge = new ClaudeBridge({

@@ -67,11 +67,12 @@ server.tool(
   {
     session_id: z.string().min(1),
     prompt: z.string().min(1),
+    model: z.string().optional(),
     max_turns: z.number().int().min(1).max(30).default(10),
   },
-  async ({ session_id, prompt, max_turns }) => {
+  async ({ session_id, prompt, model, max_turns }) => {
     try {
-      return result(await bridge.continue({ sessionId: session_id, prompt, maxTurns: max_turns }));
+      return result(await bridge.continue({ sessionId: session_id, prompt, model, maxTurns: max_turns }));
     } catch (error) {
       return errorMessage(error);
     }

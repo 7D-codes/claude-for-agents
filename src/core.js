@@ -62,13 +62,12 @@ export class ClaudeBridge {
     return { ...outcome, args };
   }
 
-  async continue({ sessionId, prompt, maxTurns = 10 }) {
+  async continue({ sessionId, prompt, model, maxTurns = 10 }) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Unknown Claude session: ${sessionId}`);
-    const args = [
-      "-p", "--output-format", "json", "--max-turns", String(maxTurns),
-      "--dangerously-skip-permissions", "--resume", sessionId, prompt,
-    ];
+    const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
+    if (model) args.push("--model", model);
+    args.push("--dangerously-skip-permissions", "--resume", sessionId, prompt);
     const outcome = await this.#invoke(args, session.workDir);
     return { ...outcome, args };
   }

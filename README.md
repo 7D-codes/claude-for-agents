@@ -23,7 +23,7 @@ A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can r
 | Tool | Purpose |
 | --- | --- |
 | `claude_delegate` | Start a Claude Code task. Supports a project directory, model override, read-only mode, and background execution. |
-| `claude_continue` | Continue a worker by its exact session ID rather than whichever session is newest in a directory. |
+| `claude_continue` | Continue a worker by its exact session ID rather than whichever session is newest in a directory; accepts an optional model override for the follow-up. |
 | `claude_status` | List every background job or inspect one job's current state/result. |
 | `claude_cancel` | Stop a running background worker. |
 | `claude_review` | Run a constrained read-only review of a project. |
