@@ -16,6 +16,8 @@ A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can r
 - Hermes remains the supervisor in the same conversation.
 - `claude_delegate` starts a worker task and returns its exact Claude session ID.
 - `claude_continue` resumes that exact worker session for fixes or follow-ups.
+- Delegate and continuation calls support up to 99 turns.
+- Max-turn failures retain their Claude session ID. After an MCP process restart, pass the original `work_dir` to `claude_continue` to recover that exact session.
 - Background work can run while Hermes continues other work.
 
 ## Tools

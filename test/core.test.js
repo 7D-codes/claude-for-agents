@@ -196,3 +196,104 @@ test("authentication errors give an actionable Claude Code login instruction", a
     /Claude Code authentication failed\. Run `claude auth login` in a terminal, then retry\./,
   );
 });
+
+test("max-turn failures retain the exact Claude session for continuation", async () => {
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    run: async (command, args) => {
+      calls.push(args);
+      if (calls.length === 1) {
+        return {
+          code: 1,
+          stdout: JSON.stringify({
+            subtype: "error_max_turns",
+            session_id: "session-max-turns",
+            result: "Reached maximum number of turns",
+          }),
+          stderr: "",
+        };
+      }
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          subtype: "success",
+          session_id: "session-max-turns",
+          result: "continued",
+        }),
+        stderr: "",
+      };
+    },
+  });
+
+  await assert.rejects(
+    () => bridge.delegate({ task: "Large task", workDir: "/tmp/project", maxTurns: 99 }),
+    /Reached maximum number of turns/,
+  );
+  const outcome = await bridge.continue({
+    sessionId: "session-max-turns",
+    prompt: "Continue the same task",
+    maxTurns: 99,
+  });
+
+  assert.equal(outcome.result, "continued");
+  assert.deepEqual(calls[1], [
+    "-p", "--output-format", "json", "--max-turns", "99",
+    "--dangerously-skip-permissions", "--resume", "session-max-turns", "Continue the same task",
+  ]);
+});
+
+test("failed background jobs expose a resumable Claude session ID", async () => {
+  const bridge = new ClaudeBridge({
+    run: async () => ({
+      code: 1,
+      stdout: JSON.stringify({
+        subtype: "error_max_turns",
+        session_id: "session-background-failed",
+        result: "Reached maximum number of turns",
+      }),
+      stderr: "",
+    }),
+  });
+
+  const job = bridge.delegateBackground({ task: "Large task", workDir: "/tmp/project" });
+  await assert.rejects(job.done, /Reached maximum number of turns/);
+
+  assert.deepEqual(bridge.status(job.jobId), {
+    jobId: job.jobId,
+    state: "failed",
+    sessionId: "session-background-failed",
+    error: "Claude Code exited with code 1: Reached maximum number of turns",
+  });
+});
+
+test("continue can recover an exact session after bridge restart when workDir is supplied", async () => {
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    run: async (command, args, options) => {
+      calls.push({ args, options });
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          subtype: "success",
+          session_id: "session-from-previous-process",
+          result: "recovered",
+        }),
+        stderr: "",
+      };
+    },
+  });
+
+  const outcome = await bridge.continue({
+    sessionId: "session-from-previous-process",
+    prompt: "Resume after MCP restart",
+    workDir: "/tmp/project",
+    maxTurns: 99,
+  });
+
+  assert.equal(outcome.result, "recovered");
+  assert.equal(calls[0].options.cwd, "/tmp/project");
+  assert.deepEqual(calls[0].args, [
+    "-p", "--output-format", "json", "--max-turns", "99",
+    "--dangerously-skip-permissions", "--resume", "session-from-previous-process", "Resume after MCP restart",
+  ]);
+});

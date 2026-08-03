@@ -39,7 +39,7 @@ const delegateSchema = {
   task: z.string().min(1),
   work_dir: z.string().optional(),
   model: z.string().optional(),
-  max_turns: z.number().int().min(1).max(30).default(10),
+  max_turns: z.number().int().min(1).max(99).default(10),
   readonly: z.boolean().default(false),
   background: z.boolean().default(false),
 };
@@ -67,12 +67,19 @@ server.tool(
   {
     session_id: z.string().min(1),
     prompt: z.string().min(1),
+    work_dir: z.string().optional(),
     model: z.string().optional(),
-    max_turns: z.number().int().min(1).max(30).default(10),
+    max_turns: z.number().int().min(1).max(99).default(10),
   },
-  async ({ session_id, prompt, model, max_turns }) => {
+  async ({ session_id, prompt, work_dir, model, max_turns }) => {
     try {
-      return result(await bridge.continue({ sessionId: session_id, prompt, model, maxTurns: max_turns }));
+      return result(await bridge.continue({
+        sessionId: session_id,
+        prompt,
+        workDir: projectDir(work_dir),
+        model,
+        maxTurns: max_turns,
+      }));
     } catch (error) {
       return errorMessage(error);
     }
