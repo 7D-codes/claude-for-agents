@@ -29,6 +29,9 @@ export class ClaudeBridge {
   }
 
   status(jobId) {
+    if (jobId === undefined) {
+      return [...this.jobs.values()].map(({ done, controller, ...status }) => status);
+    }
     const job = this.jobs.get(jobId);
     if (!job) throw new Error(`Unknown Claude job: ${jobId}`);
     const { done, controller, ...status } = job;
@@ -44,9 +47,13 @@ export class ClaudeBridge {
     return this.status(jobId);
   }
 
-  async delegate({ task, workDir, model, maxTurns = 10, signal }) {
+  async delegate({ task, workDir, model, maxTurns = 10, readonly = false, signal }) {
     const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
     if (model) args.push("--model", model);
+    if (readonly) {
+      args.push("--allowedTools", "Read,Bash(git diff *),Bash(git status *)");
+      task = "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\n" + task;
+    }
     args.push(task);
     const outcome = await this.#invoke(args, workDir, signal);
     this.sessions.set(outcome.sessionId, { workDir, model });

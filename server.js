@@ -40,6 +40,7 @@ const delegateSchema = {
   work_dir: z.string().optional(),
   model: z.string().optional(),
   max_turns: z.number().int().min(1).max(30).default(10),
+  readonly: z.boolean().default(false),
   background: z.boolean().default(false),
 };
 
@@ -47,9 +48,9 @@ server.tool(
   "claude_delegate",
   "Delegate a coding task to Claude Code. Captures an exact Claude session ID for follow-up.",
   delegateSchema,
-  async ({ task, work_dir, model, max_turns, background }) => {
+  async ({ task, work_dir, model, max_turns, readonly, background }) => {
     try {
-      const input = { task, workDir: projectDir(work_dir), model, maxTurns: max_turns };
+      const input = { task, workDir: projectDir(work_dir), model, maxTurns: max_turns, readonly };
       if (!background) return result(await bridge.delegate(input));
       const job = bridge.delegateBackground(input);
       job.done.catch(() => {});
@@ -92,8 +93,8 @@ server.tool(
 
 server.tool(
   "claude_status",
-  "Get the current state and result of a background Claude Code job.",
-  { job_id: z.string().min(1) },
+  "List background Claude Code jobs, or get the current state and result of one job.",
+  { job_id: z.string().min(1).optional() },
   async ({ job_id }) => {
     try {
       return { content: [{ type: "text", text: JSON.stringify(bridge.status(job_id), null, 2) }] };

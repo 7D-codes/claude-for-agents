@@ -129,6 +129,36 @@ test("runner captures a subprocess exit code and output", async () => {
   assert.equal(completed.stderr, "warning\n");
 });
 
+test("readonly delegation constrains Claude to inspection tools", async () => {
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    claudeBin: "/usr/local/bin/claude",
+    run: async (command, args) => {
+      calls.push({ command, args });
+      return {
+        code: 0,
+        stdout: JSON.stringify({ type: "result", subtype: "success", session_id: "readonly-1", result: "findings" }),
+        stderr: "",
+      };
+    },
+  });
+
+  await bridge.delegate({ task: "Inspect the project", workDir: "/tmp/project", readonly: true });
+
+  assert.deepEqual(calls[0].args, [
+    "-p", "--output-format", "json", "--max-turns", "10",
+    "--allowedTools", "Read,Bash(git diff *),Bash(git status *)",
+    "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nInspect the project",
+  ]);
+});
+
+test("status lists every background job when no job ID is provided", () => {
+  const bridge = new ClaudeBridge({ claudeBin: "/usr/local/bin/claude", run: () => new Promise(() => {}) });
+  const job = bridge.delegateBackground({ task: "Implement feature X", workDir: "/tmp/project" });
+
+  assert.deepEqual(bridge.status(), [{ jobId: job.jobId, state: "running" }]);
+});
+
 test("authentication errors give an actionable Claude Code login instruction", async () => {
   const bridge = new ClaudeBridge({
     run: async () => ({
