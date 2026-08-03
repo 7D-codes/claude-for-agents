@@ -53,6 +53,8 @@ export class ClaudeBridge {
     if (readonly) {
       args.push("--allowedTools", "Read,Bash(git diff *),Bash(git status *)");
       task = "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\n" + task;
+    } else {
+      args.push("--dangerously-skip-permissions");
     }
     args.push(task);
     const outcome = await this.#invoke(args, workDir, signal);
@@ -65,7 +67,7 @@ export class ClaudeBridge {
     if (!session) throw new Error(`Unknown Claude session: ${sessionId}`);
     const args = [
       "-p", "--output-format", "json", "--max-turns", String(maxTurns),
-      "--resume", sessionId, prompt,
+      "--dangerously-skip-permissions", "--resume", sessionId, prompt,
     ];
     const outcome = await this.#invoke(args, session.workDir);
     return { ...outcome, args };

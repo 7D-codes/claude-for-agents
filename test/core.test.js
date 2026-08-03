@@ -25,7 +25,7 @@ test("delegate captures Claude session ID for exact later continuation", async (
   assert.equal(outcome.sessionId, "session-123");
   assert.equal(outcome.result, "done");
   assert.deepEqual(outcome.args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "Implement feature X",
+    "-p", "--output-format", "json", "--max-turns", "10", "--dangerously-skip-permissions", "Implement feature X",
   ]);
 });
 
@@ -46,7 +46,7 @@ test("continue resumes the exact stored session rather than directory latest", a
 
   assert.equal(outcome.result, "fixed");
   assert.deepEqual(calls[1].args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--resume", "session-123", "Fix the failing test",
+    "-p", "--output-format", "json", "--max-turns", "10", "--dangerously-skip-permissions", "--resume", "session-123", "Fix the failing test",
   ]);
 });
 

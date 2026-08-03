@@ -31,8 +31,8 @@ A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can r
 ## Safety model
 
 - Work only happens in an explicit `work_dir` when one is supplied.
-- `readonly: true` constrains Claude Code to `Read`, `git diff`, and `git status`, and adds a read-only instruction to the worker prompt.
-- `claude_review` uses the same constrained tool set.
+- `claude_review` and `readonly: true` constrain Claude Code to inspection-only tools.
+- For normal delegate/continue tasks, Hermes is the approval gate: the worker is launched non-interactively with Claude Code permissions enabled so an explicitly authorized task can write files and run its requested commands.
 - Background cancellation sends an abort signal to the spawned Claude Code process.
 - Claude Code must already be installed and authenticated locally.
 
