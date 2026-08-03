@@ -7,6 +7,7 @@ test("delegate captures Claude session ID for exact later continuation", async (
   const run = async (command, args, options) => {
     assert.equal(command, "/usr/local/bin/claude");
     assert.equal(options.cwd, "/tmp/project");
+    assert.equal(options.input, "Implement feature X");
     return {
       code: 0,
       stdout: JSON.stringify({
@@ -25,7 +26,7 @@ test("delegate captures Claude session ID for exact later continuation", async (
   assert.equal(outcome.sessionId, "session-123");
   assert.equal(outcome.result, "done");
   assert.deepEqual(outcome.args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--dangerously-skip-permissions", "Implement feature X",
+    "-p", "--output-format", "json", "--max-turns", "10", "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)",
   ]);
 });
 
@@ -45,8 +46,32 @@ test("continue resumes the exact stored session rather than directory latest", a
   const outcome = await bridge.continue({ sessionId: "session-123", prompt: "Fix the failing test" });
 
   assert.equal(outcome.result, "fixed");
+  assert.equal(calls[1].options.input, "Fix the failing test");
   assert.deepEqual(calls[1].args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--dangerously-skip-permissions", "--resume", "session-123", "Fix the failing test",
+    "-p", "--output-format", "json", "--max-turns", "10", "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)", "--resume", "session-123",
+  ]);
+});
+
+test("continuing a readonly session retains its immutable review policy", async () => {
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    claudeBin: "/usr/local/bin/claude",
+    run: async (command, args, options) => {
+      calls.push({ command, args, options });
+      return {
+        code: 0,
+        stdout: JSON.stringify({ type: "result", subtype: "success", session_id: "readonly-1", result: "reviewed" }),
+        stderr: "",
+      };
+    },
+  });
+
+  await bridge.delegate({ task: "Inspect the project", workDir: "/tmp/project", readonly: true });
+  await bridge.continue({ sessionId: "readonly-1", prompt: "Check one more file", policy: "code" });
+
+  assert.equal(calls[1].options.input, "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nCheck one more file");
+  assert.deepEqual(calls[1].args, [
+    "-p", "--output-format", "json", "--max-turns", "10", "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)", "--resume", "readonly-1",
   ]);
 });
 
@@ -69,7 +94,7 @@ test("continue can switch the model while retaining the exact session", async ()
 
   assert.deepEqual(calls[1].args, [
     "-p", "--output-format", "json", "--max-turns", "10", "--model", "haiku",
-    "--dangerously-skip-permissions", "--resume", "session-123", "Use Haiku now",
+    "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)", "--resume", "session-123",
   ]);
 });
 
@@ -89,10 +114,10 @@ test("review is constrained to read and git diff commands", async () => {
 
   await bridge.review({ workDir: "/tmp/project", scope: "current changes" });
 
+  assert.equal(calls[0].options.input, "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nReview current changes for bugs, security issues, regressions, and missing tests. Scope: current changes. Run only allowed read-only checks if useful. Do not edit files or run state-changing commands.");
   assert.deepEqual(calls[0].args, [
-    "-p", "--output-format", "json", "--max-turns", "5",
-    "--allowedTools", "Read,Bash(git diff *),Bash(git status *)",
-    "Review current changes for bugs, security issues, regressions, and missing tests. Scope: current changes. Do not edit files or run state-changing commands.",
+    "-p", "--output-format", "json", "--max-turns", "10",
+    "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)",
   ]);
 });
 
@@ -152,12 +177,23 @@ test("runner captures a subprocess exit code and output", async () => {
   assert.equal(completed.stderr, "warning\n");
 });
 
+test("runner writes supplied input to stdin and closes it", async () => {
+  const completed = await runProcess(
+    process.execPath,
+    ["-e", "let input=''; process.stdin.on('data', (chunk) => input += chunk); process.stdin.on('end', () => console.log(input));"],
+    { input: "prompt over stdin" },
+  );
+
+  assert.equal(completed.code, 0);
+  assert.equal(completed.stdout, "prompt over stdin\n");
+});
+
 test("readonly delegation constrains Claude to inspection tools", async () => {
   const calls = [];
   const bridge = new ClaudeBridge({
     claudeBin: "/usr/local/bin/claude",
-    run: async (command, args) => {
-      calls.push({ command, args });
+    run: async (command, args, options) => {
+      calls.push({ command, args, options });
       return {
         code: 0,
         stdout: JSON.stringify({ type: "result", subtype: "success", session_id: "readonly-1", result: "findings" }),
@@ -168,10 +204,10 @@ test("readonly delegation constrains Claude to inspection tools", async () => {
 
   await bridge.delegate({ task: "Inspect the project", workDir: "/tmp/project", readonly: true });
 
+  assert.equal(calls[0].options.input, "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nInspect the project");
   assert.deepEqual(calls[0].args, [
     "-p", "--output-format", "json", "--max-turns", "10",
-    "--allowedTools", "Read,Bash(git diff *),Bash(git status *)",
-    "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nInspect the project",
+    "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)",
   ]);
 });
 
@@ -236,9 +272,10 @@ test("max-turn failures retain the exact Claude session for continuation", async
   });
 
   assert.equal(outcome.result, "continued");
+  assert.equal(calls[1][calls[1].length - 1], "session-max-turns");
   assert.deepEqual(calls[1], [
     "-p", "--output-format", "json", "--max-turns", "99",
-    "--dangerously-skip-permissions", "--resume", "session-max-turns", "Continue the same task",
+    "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)", "--resume", "session-max-turns",
   ]);
 });
 
@@ -266,34 +303,20 @@ test("failed background jobs expose a resumable Claude session ID", async () => 
   });
 });
 
-test("continue can recover an exact session after bridge restart when workDir is supplied", async () => {
-  const calls = [];
+test("continue rejects untrusted restart recovery without persisted session metadata", async () => {
   const bridge = new ClaudeBridge({
-    run: async (command, args, options) => {
-      calls.push({ args, options });
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          subtype: "success",
-          session_id: "session-from-previous-process",
-          result: "recovered",
-        }),
-        stderr: "",
-      };
+    run: async () => {
+      throw new Error("runner should not be invoked");
     },
   });
 
-  const outcome = await bridge.continue({
-    sessionId: "session-from-previous-process",
-    prompt: "Resume after MCP restart",
-    workDir: "/tmp/project",
-    maxTurns: 99,
-  });
-
-  assert.equal(outcome.result, "recovered");
-  assert.equal(calls[0].options.cwd, "/tmp/project");
-  assert.deepEqual(calls[0].args, [
-    "-p", "--output-format", "json", "--max-turns", "99",
-    "--dangerously-skip-permissions", "--resume", "session-from-previous-process", "Resume after MCP restart",
-  ]);
+  await assert.rejects(
+    () => bridge.continue({
+      sessionId: "session-from-previous-process",
+      prompt: "Resume after MCP restart",
+      workDir: "/tmp/project",
+      maxTurns: 99,
+    }),
+    /Unknown Claude session: session-from-previous-process/,
+  );
 });

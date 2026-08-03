@@ -40,6 +40,7 @@ const delegateSchema = {
   work_dir: z.string().optional(),
   model: z.string().optional(),
   max_turns: z.number().int().min(1).max(99).default(10),
+  policy: z.enum(["code", "review"]).optional(),
   readonly: z.boolean().default(false),
   background: z.boolean().default(false),
 };
@@ -48,9 +49,9 @@ server.tool(
   "claude_delegate",
   "Delegate a coding task to Claude Code. Captures an exact Claude session ID for follow-up.",
   delegateSchema,
-  async ({ task, work_dir, model, max_turns, readonly, background }) => {
+  async ({ task, work_dir, model, max_turns, policy, readonly, background }) => {
     try {
-      const input = { task, workDir: projectDir(work_dir), model, maxTurns: max_turns, readonly };
+      const input = { task, workDir: projectDir(work_dir), model, maxTurns: max_turns, policy, readonly };
       if (!background) return result(await bridge.delegate(input));
       const job = bridge.delegateBackground(input);
       job.done.catch(() => {});
@@ -67,16 +68,14 @@ server.tool(
   {
     session_id: z.string().min(1),
     prompt: z.string().min(1),
-    work_dir: z.string().optional(),
     model: z.string().optional(),
     max_turns: z.number().int().min(1).max(99).default(10),
   },
-  async ({ session_id, prompt, work_dir, model, max_turns }) => {
+  async ({ session_id, prompt, model, max_turns }) => {
     try {
       return result(await bridge.continue({
         sessionId: session_id,
         prompt,
-        workDir: projectDir(work_dir),
         model,
         maxTurns: max_turns,
       }));
@@ -89,10 +88,15 @@ server.tool(
 server.tool(
   "claude_review",
   "Run a read-only Claude Code review. Claude may read files and git diff/status only; it cannot edit.",
-  { work_dir: z.string(), scope: z.string().default("current changes") },
-  async ({ work_dir, scope }) => {
+  {
+    work_dir: z.string(),
+    scope: z.string().default("current changes"),
+    model: z.string().optional(),
+    max_turns: z.number().int().min(1).max(99).default(10),
+  },
+  async ({ work_dir, scope, model, max_turns }) => {
     try {
-      return result(await bridge.review({ workDir: projectDir(work_dir), scope }));
+      return result(await bridge.review({ workDir: projectDir(work_dir), scope, model, maxTurns: max_turns }));
     } catch (error) {
       return errorMessage(error);
     }

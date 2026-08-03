@@ -1,3 +1,25 @@
+const POLICY_DEFINITIONS = {
+  review: {
+    readonly: true,
+    allowedTools: "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)",
+  },
+  code: {
+    readonly: false,
+    allowedTools: "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)",
+  },
+};
+
+function getPolicy(name) {
+  const policy = POLICY_DEFINITIONS[name];
+  if (!policy) throw new Error(`Unknown Claude permission policy: ${name}`);
+  return { name, ...policy };
+}
+
+function promptFor(policy, prompt) {
+  if (!policy.readonly) return prompt;
+  return "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\n" + prompt;
+}
+
 export class ClaudeBridge {
   constructor({ claudeBin = "claude", run }) {
     this.claudeBin = claudeBin;
@@ -51,50 +73,43 @@ export class ClaudeBridge {
     return this.status(jobId);
   }
 
-  async delegate({ task, workDir, model, maxTurns = 10, readonly = false, signal }) {
+  async delegate({ task, workDir, model, maxTurns = 10, policy, readonly = false, signal }) {
+    const activePolicy = getPolicy(readonly ? "review" : (policy || "code"));
     const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
     if (model) args.push("--model", model);
-    if (readonly) {
-      args.push("--allowedTools", "Read,Bash(git diff *),Bash(git status *)");
-      task = "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\n" + task;
-    } else {
-      args.push("--dangerously-skip-permissions");
-    }
-    args.push(task);
+    args.push("--allowedTools", activePolicy.allowedTools);
+    const input = promptFor(activePolicy, task);
     try {
-      const outcome = await this.#invoke(args, workDir, signal);
-      this.sessions.set(outcome.sessionId, { workDir, model });
+      const outcome = await this.#invoke(args, workDir, input, signal);
+      this.sessions.set(outcome.sessionId, { workDir, model, policy: activePolicy.name, allowedTools: activePolicy.allowedTools });
       return { ...outcome, args };
     } catch (error) {
-      if (error.sessionId) this.sessions.set(error.sessionId, { workDir, model });
+      if (error.sessionId) {
+        this.sessions.set(error.sessionId, { workDir, model, policy: activePolicy.name, allowedTools: activePolicy.allowedTools });
+      }
       throw error;
     }
   }
 
-  async continue({ sessionId, prompt, model, maxTurns = 10, workDir }) {
-    const session = this.sessions.get(sessionId) || (workDir ? { workDir, model } : undefined);
+  async continue({ sessionId, prompt, model, maxTurns = 10 }) {
+    const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Unknown Claude session: ${sessionId}`);
-    this.sessions.set(sessionId, session);
+    const activePolicy = getPolicy(session.policy);
     const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
     if (model) args.push("--model", model);
-    args.push("--dangerously-skip-permissions", "--resume", sessionId, prompt);
-    const outcome = await this.#invoke(args, session.workDir);
+    args.push("--allowedTools", activePolicy.allowedTools, "--resume", sessionId);
+    const outcome = await this.#invoke(args, session.workDir, promptFor(activePolicy, prompt));
     return { ...outcome, args };
   }
 
-  async review({ workDir, scope = "current changes" }) {
-    const prompt = "Review current changes for bugs, security issues, regressions, and missing tests. " +
-      `Scope: ${scope}. Do not edit files or run state-changing commands.`;
-    const args = [
-      "-p", "--output-format", "json", "--max-turns", "5",
-      "--allowedTools", "Read,Bash(git diff *),Bash(git status *)", prompt,
-    ];
-    const outcome = await this.#invoke(args, workDir);
-    return { ...outcome, args };
+  async review({ workDir, scope = "current changes", model, maxTurns = 10 }) {
+    const task = "Review current changes for bugs, security issues, regressions, and missing tests. " +
+      `Scope: ${scope}. Run only allowed read-only checks if useful. Do not edit files or run state-changing commands.`;
+    return this.delegate({ task, workDir, model, maxTurns, policy: "review" });
   }
 
-  async #invoke(args, workDir, signal) {
-    const completed = await this.run(this.claudeBin, args, { cwd: workDir, signal });
+  async #invoke(args, workDir, input, signal) {
+    const completed = await this.run(this.claudeBin, args, { cwd: workDir, signal, input });
     let payload;
     try {
       payload = JSON.parse(completed.stdout);

@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 
-export function runProcess(command, args, { cwd, signal } = {}) {
+export function runProcess(command, args, { cwd, signal, input } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
@@ -17,6 +17,8 @@ export function runProcess(command, args, { cwd, signal } = {}) {
       stdout,
       stderr,
     }));
+    if (input !== undefined) child.stdin.end(input);
+    else child.stdin.end();
     signal?.addEventListener("abort", () => child.kill("SIGTERM"), { once: true });
   });
 }
