@@ -36,12 +36,36 @@ function parseClaudeOutput(stdout) {
 }
 
 export class ClaudeBridge {
-  constructor({ claudeBin = "claude", run }) {
+  constructor({ claudeBin = "claude", run, stateStore } = {}) {
     this.claudeBin = claudeBin;
     this.run = run;
-    this.sessions = new Map();
-    this.jobs = new Map();
-    this.nextJobId = 1;
+    this.stateStore = stateStore;
+    const restored = stateStore?.load() || {};
+    this.sessions = new Map(restored.sessions || []);
+    let interrupted = false;
+    this.jobs = new Map((restored.jobs || []).map((job) => {
+      if (job.state === "running") {
+        interrupted = true;
+        job = {
+          ...job,
+          state: "interrupted",
+          error: "MCP bridge restarted before the Claude job completed",
+        };
+      }
+      return [job.jobId, job];
+    }));
+    this.nextJobId = restored.nextJobId || 1;
+    if (interrupted) this.#persist();
+  }
+
+  #persist() {
+    if (!this.stateStore) return;
+    const jobs = [...this.jobs.values()].map(({ done, controller, ...job }) => job);
+    this.stateStore.save({
+      sessions: [...this.sessions.entries()],
+      jobs,
+      nextJobId: this.nextJobId,
+    });
   }
 
   delegateBackground(input) {
@@ -49,6 +73,7 @@ export class ClaudeBridge {
     const controller = new AbortController();
     const job = { jobId, state: "running", controller };
     this.jobs.set(jobId, job);
+    this.#persist();
     const done = this.delegate({ ...input, signal: controller.signal }).then(
       (outcome) => {
         if (job.state === "running") {
@@ -59,6 +84,7 @@ export class ClaudeBridge {
             telemetry: outcome.telemetry,
           });
         }
+        this.#persist();
         return outcome;
       },
       (error) => {
@@ -68,6 +94,7 @@ export class ClaudeBridge {
           if (error.telemetry) failure.telemetry = error.telemetry;
           Object.assign(job, failure);
         }
+        this.#persist();
         throw error;
       },
     );
@@ -91,6 +118,7 @@ export class ClaudeBridge {
     if (job.state !== "running") return this.status(jobId);
     job.state = "cancelled";
     job.controller.abort();
+    this.#persist();
     return this.status(jobId);
   }
 
@@ -103,10 +131,12 @@ export class ClaudeBridge {
     try {
       const outcome = await this.#invoke(args, workDir, input, signal);
       this.sessions.set(outcome.sessionId, { workDir, model, policy: activePolicy.name, allowedTools: activePolicy.allowedTools });
+      this.#persist();
       return { ...outcome, args };
     } catch (error) {
       if (error.sessionId) {
         this.sessions.set(error.sessionId, { workDir, model, policy: activePolicy.name, allowedTools: activePolicy.allowedTools });
+        this.#persist();
       }
       throw error;
     }

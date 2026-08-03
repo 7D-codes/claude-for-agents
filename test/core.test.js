@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { ClaudeBridge } from "../src/core.js";
+import { FileStateStore } from "../src/state.js";
+
+test("file state store persists JSON atomically with owner-only permissions", () => {
+  const directory = mkdtempSync(join(tmpdir(), "claude-for-hermes-state-"));
+  const path = join(directory, "state.json");
+  try {
+    const store = new FileStateStore(path);
+    assert.deepEqual(store.load(), {});
+    store.save({ sessions: [["session-1", { policy: "review" }]], nextJobId: 2 });
+    assert.deepEqual(store.load(), { sessions: [["session-1", { policy: "review" }]], nextJobId: 2 });
+    assert.equal(statSync(path).mode & 0o777, 0o600);
+    assert.doesNotThrow(() => JSON.parse(readFileSync(path, "utf8")));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("delegate captures Claude session ID for exact later continuation", async () => {
   const run = async (command, args, options) => {
@@ -325,6 +344,50 @@ test("failed background jobs expose a resumable Claude session ID", async () => 
   assert.equal(status.error, "Claude Code exited with code 1: Reached maximum number of turns");
   assert.equal(status.telemetry.exitCode, 1);
   assert.equal(status.telemetry.result.subtype, "error_max_turns");
+});
+
+test("restores persisted sessions and stable background-job IDs", async () => {
+  const saved = [];
+  const stateStore = {
+    load: () => ({
+      sessions: [["persisted-review", { workDir: "/tmp/project", policy: "review" }]],
+      jobs: [{ jobId: "job-7", state: "completed", sessionId: "persisted-review", result: "previous" }],
+      nextJobId: 8,
+    }),
+    save: (state) => saved.push(state),
+  };
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    stateStore,
+    run: async (command, args, options) => {
+      calls.push({ args, options });
+      return { code: 0, stderr: "", stdout: JSON.stringify({ subtype: "success", session_id: "persisted-review", result: "resumed" }) };
+    },
+  });
+
+  const resumed = await bridge.continue({ sessionId: "persisted-review", prompt: "Re-check the diff" });
+  const job = bridge.delegateBackground({ task: "Fresh task", workDir: "/tmp/project" });
+
+  assert.equal(resumed.result, "resumed");
+  assert.equal(calls[0].options.cwd, "/tmp/project");
+  assert.match(calls[0].options.input, /READ-ONLY/);
+  assert.equal(job.jobId, "job-8");
+  assert.equal(bridge.status("job-7").result, "previous");
+  assert.ok(saved.length > 0);
+});
+
+test("marks a persisted running job interrupted after bridge restart", () => {
+  const stateStore = {
+    load: () => ({ jobs: [{ jobId: "job-4", state: "running" }], nextJobId: 5 }),
+    save: () => {},
+  };
+  const bridge = new ClaudeBridge({ stateStore, run: () => new Promise(() => {}) });
+
+  assert.deepEqual(bridge.status("job-4"), {
+    jobId: "job-4",
+    state: "interrupted",
+    error: "MCP bridge restarted before the Claude job completed",
+  });
 });
 
 test("continue rejects untrusted restart recovery without persisted session metadata", async () => {

@@ -37,7 +37,8 @@ A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can r
 - Normal delegation uses the named `code` policy. Both policies use explicit Claude tool allowlists; the bridge does not use `--dangerously-skip-permissions`.
 - Worker prompts are sent on stdin rather than command-line arguments.
 - Delegation results and tracked background-job status preserve Claude's structured result telemetry (including parsed output events, timing/usage fields when supplied, stderr, and exit status).
-- Unknown sessions cannot be resumed merely by supplying a directory; restart recovery is restored only from persisted session metadata.
+- Unknown sessions cannot be resumed merely by supplying a directory; restart recovery comes only from an owner-only (`0600`) JSON state file at `~/.claude-for-hermes/state.json` (or `CLAUDE_FOR_HERMES_STATE`).
+- Completed/failed jobs and session metadata persist across bridge restarts with stable IDs; jobs active during a restart are reported as `interrupted` and are never falsely resumed.
 - Background cancellation sends an abort signal to the spawned Claude Code process.
 - Claude Code must already be installed and authenticated locally.
 
