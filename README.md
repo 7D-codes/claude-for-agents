@@ -1,12 +1,75 @@
 # Claude for Hermes
 
-A local MCP server that lets Hermes delegate coding tasks to the authenticated official Claude Code CLI.
+A local MCP server that lets **Hermes supervise Claude Code** in the same way [`kimi-for-claude`](https://github.com/7D-codes/kimi-for-claude) lets Claude Code supervise Kimi.
 
-## Intended tools
+You keep talking to Hermes in your normal chat. Hermes delegates focused coding, research, or review work to the authenticated official Claude Code CLI, receives a concise result, and remains the ongoing manager of the conversation.
 
-- `claude_delegate` — start an isolated Claude Code coding/research session.
-- `claude_continue` — resume a specific Claude session by its captured ID.
-- `claude_status` / `claude_cancel` — manage tracked background sessions.
-- `claude_review` — run a scoped read-only review.
+## Architecture
 
-The server is local-only. Hermes decides when to delegate; Claude Code works only in the supplied project directory.
+```text
+You → Hermes (ongoing conversation) → claude-for-hermes MCP → Claude Code worker
+                                 ← result / session ID ←
+```
+
+A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can run autonomously. That does **not** make the Hermes conversation one-shot:
+
+- Hermes remains the supervisor in the same conversation.
+- `claude_delegate` starts a worker task and returns its exact Claude session ID.
+- `claude_continue` resumes that exact worker session for fixes or follow-ups.
+- Background work can run while Hermes continues other work.
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `claude_delegate` | Start a Claude Code task. Supports a project directory, model override, read-only mode, and background execution. |
+| `claude_continue` | Continue a worker by its exact session ID rather than whichever session is newest in a directory. |
+| `claude_status` | List every background job or inspect one job's current state/result. |
+| `claude_cancel` | Stop a running background worker. |
+| `claude_review` | Run a constrained read-only review of a project. |
+
+## Safety model
+
+- Work only happens in an explicit `work_dir` when one is supplied.
+- `readonly: true` constrains Claude Code to `Read`, `git diff`, and `git status`, and adds a read-only instruction to the worker prompt.
+- `claude_review` uses the same constrained tool set.
+- Background cancellation sends an abort signal to the spawned Claude Code process.
+- Claude Code must already be installed and authenticated locally.
+
+## Install for Hermes
+
+```bash
+cd ~/Projects/claude-for-hermes
+npm install
+hermes mcp add claude_for_hermes \
+  --command "$(command -v node)" \
+  --connect-timeout 20 \
+  --args "$PWD/server.js"
+```
+
+Then start a new Hermes session so it discovers the MCP tools. Confirm the server can connect:
+
+```bash
+hermes mcp test claude_for_hermes
+```
+
+## Example requests
+
+In a Hermes chat:
+
+> Ask Claude to implement the API validation work in `~/Projects/my-app`. Keep the task focused, run the relevant tests, and report the changed files.
+
+> Ask Claude to inspect the authentication module in read-only mode and identify security risks.
+
+> Continue Claude session `<session-id>`: fix the failing tests and report the outcome.
+
+## Development
+
+```bash
+npm test
+node --check server.js
+node --check src/core.js
+node --check src/runner.js
+```
+
+The test suite covers exact worker-session continuation, read-only restrictions, job tracking/cancellation, subprocess output capture, and actionable authentication failures.
