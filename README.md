@@ -36,6 +36,7 @@ A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can r
 - `claude_review` and `readonly: true` use the immutable `review` policy; continued review sessions retain that policy.
 - Normal delegation uses the named `code` policy. Both policies use explicit Claude tool allowlists; the bridge does not use `--dangerously-skip-permissions`.
 - Worker prompts are sent on stdin rather than command-line arguments.
+- Delegation results and tracked background-job status preserve Claude's structured result telemetry (including parsed output events, timing/usage fields when supplied, stderr, and exit status).
 - Unknown sessions cannot be resumed merely by supplying a directory; restart recovery is restored only from persisted session metadata.
 - Background cancellation sends an abort signal to the spawned Claude Code process.
 - Claude Code must already be installed and authenticated locally.

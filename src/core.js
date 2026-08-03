@@ -20,6 +20,21 @@ function promptFor(policy, prompt) {
   return "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\n" + prompt;
 }
 
+function parseClaudeOutput(stdout) {
+  const text = stdout.trim();
+  if (!text) return { payload: undefined, events: [] };
+  try {
+    const payload = JSON.parse(text);
+    return { payload, events: [payload] };
+  } catch {
+    const events = text.split("\n").flatMap((line) => {
+      try { return [JSON.parse(line)]; } catch { return []; }
+    });
+    const payload = [...events].reverse().find((event) => event.session_id || event.type === "result");
+    return { payload, events };
+  }
+}
+
 export class ClaudeBridge {
   constructor({ claudeBin = "claude", run }) {
     this.claudeBin = claudeBin;
@@ -37,7 +52,12 @@ export class ClaudeBridge {
     const done = this.delegate({ ...input, signal: controller.signal }).then(
       (outcome) => {
         if (job.state === "running") {
-          Object.assign(job, { state: "completed", sessionId: outcome.sessionId, result: outcome.result });
+          Object.assign(job, {
+            state: "completed",
+            sessionId: outcome.sessionId,
+            result: outcome.result,
+            telemetry: outcome.telemetry,
+          });
         }
         return outcome;
       },
@@ -45,6 +65,7 @@ export class ClaudeBridge {
         if (job.state === "running") {
           const failure = { state: "failed", error: error.message };
           if (error.sessionId) failure.sessionId = error.sessionId;
+          if (error.telemetry) failure.telemetry = error.telemetry;
           Object.assign(job, failure);
         }
         throw error;
@@ -110,20 +131,26 @@ export class ClaudeBridge {
 
   async #invoke(args, workDir, input, signal) {
     const completed = await this.run(this.claudeBin, args, { cwd: workDir, signal, input });
-    let payload;
-    try {
-      payload = JSON.parse(completed.stdout);
-    } catch {
-      payload = undefined;
-    }
+    const { payload, events } = parseClaudeOutput(completed.stdout);
+    const telemetry = {
+      exitCode: completed.code,
+      signal: completed.signal,
+      stderr: completed.stderr,
+      events,
+      result: payload,
+    };
     if (completed.code !== 0) {
       const details = (completed.stderr || completed.stdout || "no output").trim();
       const message = payload?.result || details;
       if (/authenticate|oauth session expired|not logged in/i.test(message)) {
-        throw new Error("Claude Code authentication failed. Run `claude auth login` in a terminal, then retry.");
+        const error = new Error("Claude Code authentication failed. Run `claude auth login` in a terminal, then retry.");
+        if (payload?.session_id) error.sessionId = payload.session_id;
+        error.telemetry = telemetry;
+        throw error;
       }
       const error = new Error(`Claude Code exited with code ${completed.code}: ${message}`);
       if (payload?.session_id) error.sessionId = payload.session_id;
+      error.telemetry = telemetry;
       throw error;
     }
 
@@ -133,6 +160,6 @@ export class ClaudeBridge {
     if (payload.subtype !== "success" || !payload.session_id) {
       throw new Error(payload.result || "Claude Code did not return a successful session");
     }
-    return { sessionId: payload.session_id, result: payload.result || "" };
+    return { sessionId: payload.session_id, result: payload.result || "", telemetry };
   }
 }

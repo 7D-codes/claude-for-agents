@@ -26,7 +26,11 @@ function result(outcome) {
   return {
     content: [{
       type: "text",
-      text: JSON.stringify({ session_id: outcome.sessionId, result: outcome.result }, null, 2),
+      text: JSON.stringify({
+        session_id: outcome.sessionId,
+        result: outcome.result,
+        telemetry: outcome.telemetry,
+      }, null, 2),
     }],
   };
 }

@@ -30,6 +30,28 @@ test("delegate captures Claude session ID for exact later continuation", async (
   ]);
 });
 
+test("delegate preserves Claude result telemetry from newline-delimited output", async () => {
+  const bridge = new ClaudeBridge({
+    run: async () => ({
+      code: 0,
+      stderr: "",
+      stdout: [
+        JSON.stringify({ type: "assistant", message: { content: "working" } }),
+        JSON.stringify({ type: "result", subtype: "success", session_id: "session-telemetry", result: "done", duration_ms: 42, num_turns: 2, cost_usd: 0.01 }),
+      ].join("\n"),
+    }),
+  });
+
+  const outcome = await bridge.delegate({ task: "Inspect", workDir: "/tmp/project" });
+
+  assert.equal(outcome.sessionId, "session-telemetry");
+  assert.equal(outcome.telemetry.exitCode, 0);
+  assert.equal(outcome.telemetry.events.length, 2);
+  assert.equal(outcome.telemetry.result.duration_ms, 42);
+  assert.equal(outcome.telemetry.result.num_turns, 2);
+  assert.equal(outcome.telemetry.result.cost_usd, 0.01);
+});
+
 test("continue resumes the exact stored session rather than directory latest", async () => {
   const calls = [];
   const run = async (command, args, options) => {
@@ -138,12 +160,13 @@ test("background delegation exposes tracked status after completion", async () =
   });
   await job.done;
 
-  assert.deepEqual(bridge.status(job.jobId), {
-    jobId: job.jobId,
-    state: "completed",
-    sessionId: "session-background",
-    result: "complete",
-  });
+  const status = bridge.status(job.jobId);
+  assert.equal(status.jobId, job.jobId);
+  assert.equal(status.state, "completed");
+  assert.equal(status.sessionId, "session-background");
+  assert.equal(status.result, "complete");
+  assert.equal(status.telemetry.exitCode, 0);
+  assert.equal(status.telemetry.result.session_id, "session-background");
 });
 
 test("cancelling a background job signals the running Claude process", async () => {
@@ -295,12 +318,13 @@ test("failed background jobs expose a resumable Claude session ID", async () => 
   const job = bridge.delegateBackground({ task: "Large task", workDir: "/tmp/project" });
   await assert.rejects(job.done, /Reached maximum number of turns/);
 
-  assert.deepEqual(bridge.status(job.jobId), {
-    jobId: job.jobId,
-    state: "failed",
-    sessionId: "session-background-failed",
-    error: "Claude Code exited with code 1: Reached maximum number of turns",
-  });
+  const status = bridge.status(job.jobId);
+  assert.equal(status.jobId, job.jobId);
+  assert.equal(status.state, "failed");
+  assert.equal(status.sessionId, "session-background-failed");
+  assert.equal(status.error, "Claude Code exited with code 1: Reached maximum number of turns");
+  assert.equal(status.telemetry.exitCode, 1);
+  assert.equal(status.telemetry.result.subtype, "error_max_turns");
 });
 
 test("continue rejects untrusted restart recovery without persisted session metadata", async () => {
