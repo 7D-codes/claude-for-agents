@@ -97,3 +97,20 @@ test("background delegation exposes tracked status after completion", async () =
     result: "complete",
   });
 });
+
+test("cancelling a background job signals the running Claude process", async () => {
+  let signal;
+  const bridge = new ClaudeBridge({
+    claudeBin: "/usr/local/bin/claude",
+    run: (command, args, options) => {
+      signal = options.signal;
+      return new Promise(() => {});
+    },
+  });
+  const job = bridge.delegateBackground({ task: "Implement feature X", workDir: "/tmp/project" });
+
+  bridge.cancel(job.jobId);
+
+  assert.equal(signal.aborted, true);
+  assert.deepEqual(bridge.status(job.jobId), { jobId: job.jobId, state: "cancelled" });
+});
