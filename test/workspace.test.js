@@ -11,12 +11,12 @@ test("approved project root defaults to ~/Projects and accepts a project inside 
 
   assert.equal(root, realpathSync(join(homedir(), "Projects")));
   assert.equal(
-    resolveProjectDir("~/Projects/claude-for-hermes", { root }),
-    realpathSync(join(homedir(), "Projects", "claude-for-hermes")),
+    resolveProjectDir("~/Projects/claude-for-agents", { root }),
+    realpathSync(join(homedir(), "Projects", "claude-for-agents")),
   );
   assert.equal(
-    resolveProjectDir("/Users/7d/Projects/claude-for-hermes", { root }),
-    realpathSync(join(homedir(), "Projects", "claude-for-hermes")),
+    resolveProjectDir("/Users/7d/Projects/claude-for-agents", { root }),
+    realpathSync(join(homedir(), "Projects", "claude-for-agents")),
   );
 });
 
@@ -41,7 +41,7 @@ test("prefers the Claude for Agents project-root setting while accepting the leg
 });
 
 test("rejects traversal out of a configured project root, including sibling name prefixes", () => {
-  const base = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-hermes-roots-"));
+  const base = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-agents-roots-"));
   const root = join(base, "root");
   const sibling = join(base, "root-evil");
   mkdirSync(join(root, "app"), { recursive: true });
@@ -66,7 +66,7 @@ test("rejects traversal out of a configured project root, including sibling name
 
 test("an omitted work directory falls back to the working directory and is still validated", () => {
   const root = approvedProjectRoot({});
-  const repository = realpathSync(join(homedir(), "Projects", "claude-for-hermes"));
+  const repository = realpathSync(join(homedir(), "Projects", "claude-for-agents"));
 
   assert.equal(resolveProjectDir(undefined, { root, cwd: repository }), repository);
   assert.throws(
@@ -76,7 +76,7 @@ test("an omitted work directory falls back to the working directory and is still
 });
 
 test("rejects symlinks that escape the approved project root", () => {
-  const base = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-hermes-links-"));
+  const base = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-agents-links-"));
   const root = join(base, "root");
   const outside = join(base, "outside");
   mkdirSync(join(outside, "secrets"), { recursive: true });
@@ -103,7 +103,7 @@ test("rejects symlinks that escape the approved project root", () => {
 });
 
 test("rejects a work directory outside the approved project root", () => {
-  const outside = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-hermes-outside-"));
+  const outside = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-agents-outside-"));
   try {
     assert.throws(
       () => resolveProjectDir(outside, { root: realpathSync(join(homedir(), "Projects")) }),

@@ -8,7 +8,7 @@ import { ClaudeBridge } from "../src/core.js";
 import { FileStateStore } from "../src/state.js";
 
 test("file state store persists JSON atomically with owner-only permissions", () => {
-  const directory = mkdtempSync(join(tmpdir(), "claude-for-hermes-state-"));
+  const directory = mkdtempSync(join(tmpdir(), "claude-for-agents-state-"));
   const path = join(directory, "state.json");
   try {
     const store = new FileStateStore(path);
@@ -273,7 +273,7 @@ test("runner writes supplied input to stdin and closes it", async () => {
 });
 
 test("runner cancellation terminates the entire subprocess group", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "claude-for-hermes-cancel-"));
+  const directory = mkdtempSync(join(tmpdir(), "claude-for-agents-cancel-"));
   const marker = join(directory, "grandchild-survived");
   const grandchild = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 300)`;
   const parent = [

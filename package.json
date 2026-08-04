@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "description": "A local MCP server that lets compatible agents delegate work to Claude Code.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/7D-codes/claude-for-agents.git"
+  },
+  "homepage": "https://github.com/7D-codes/claude-for-agents#readme",
+  "bugs": "https://github.com/7D-codes/claude-for-agents/issues",
   "scripts": {
     "test": "node --test",
     "smoke": "node scripts/smoke-mcp.js"
