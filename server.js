@@ -1,27 +1,22 @@
 #!/usr/bin/env node
-import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { ClaudeBridge } from "./src/core.js";
 import { runProcess } from "./src/runner.js";
 import { FileStateStore } from "./src/state.js";
+import { approvedProjectRoot, resolveProjectDir } from "./src/workspace.js";
 
 const claudeBin = process.env.CLAUDE_BIN || "claude";
 const statePath = process.env.CLAUDE_FOR_HERMES_STATE || join(homedir(), ".claude-for-hermes", "state.json");
+const projectRoot = approvedProjectRoot();
 const bridge = new ClaudeBridge({ claudeBin, run: runProcess, stateStore: new FileStateStore(statePath) });
 const server = new McpServer({ name: "claude-for-hermes", version: "0.1.0" });
 
 function projectDir(input) {
-  if (!input) return undefined;
-  const expanded = input === "~" ? homedir() : input.replace(/^~\//, `${homedir()}/`);
-  const directory = resolve(expanded);
-  if (!existsSync(directory) || !statSync(directory).isDirectory()) {
-    throw new Error(`work_dir is not an existing directory: ${directory}`);
-  }
-  return directory;
+  return resolveProjectDir(input, { root: projectRoot });
 }
 
 function result(outcome) {
