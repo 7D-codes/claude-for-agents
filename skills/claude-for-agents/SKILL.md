@@ -197,7 +197,7 @@ Use `claude_delegate` with:
 - a bounded task;
 - an explicit `work_dir` beneath the approved root;
 - `policy: "code"` for edits;
-- a realistic `max_turns` from 1 to 99;
+- an optional `max_turns` safety cap from 1 to 99 only when the supervisor wants a bounded run;
 - `background: true` only when the supervisor will track the returned job ID.
 
 Record the returned `session_id`. Completion: the worker result, telemetry, changed files, and tests are reviewed by the supervisor rather than accepted blindly.

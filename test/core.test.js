@@ -45,7 +45,7 @@ test("delegate captures Claude session ID for exact later continuation", async (
   assert.equal(outcome.sessionId, "session-123");
   assert.equal(outcome.result, "done");
   assert.deepEqual(outcome.args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)",
+    "-p", "--output-format", "json", "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)",
   ]);
 });
 
@@ -89,7 +89,7 @@ test("continue resumes the exact stored session rather than directory latest", a
   assert.equal(outcome.result, "fixed");
   assert.equal(calls[1].options.input, "Fix the failing test");
   assert.deepEqual(calls[1].args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)", "--resume", "session-123",
+    "-p", "--output-format", "json", "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)", "--resume", "session-123",
   ]);
 });
 
@@ -112,7 +112,7 @@ test("continuing a readonly session retains its immutable review policy", async 
 
   assert.equal(calls[1].options.input, "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nCheck one more file");
   assert.deepEqual(calls[1].args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)", "--resume", "readonly-1",
+    "-p", "--output-format", "json", "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)", "--resume", "readonly-1",
   ]);
 });
 
@@ -134,7 +134,7 @@ test("continue can switch the model while retaining the exact session", async ()
   await bridge.continue({ sessionId: "session-123", prompt: "Use Haiku now", model: "haiku" });
 
   assert.deepEqual(calls[1].args, [
-    "-p", "--output-format", "json", "--max-turns", "10", "--model", "haiku",
+    "-p", "--output-format", "json", "--model", "haiku",
     "--allowedTools", "Read,Edit,Write,Bash(npm test),Bash(npm test *),Bash(node --check *),Bash(git diff *),Bash(git status *)", "--resume", "session-123",
   ]);
 });
@@ -157,7 +157,7 @@ test("review is constrained to read and git diff commands", async () => {
 
   assert.equal(calls[0].options.input, "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nReview current changes for bugs, security issues, regressions, and missing tests. Scope: current changes. Run only allowed read-only checks if useful. Do not edit files or run state-changing commands.");
   assert.deepEqual(calls[0].args, [
-    "-p", "--output-format", "json", "--max-turns", "10",
+    "-p", "--output-format", "json",
     "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)",
   ]);
 });
@@ -318,7 +318,7 @@ test("readonly delegation constrains Claude to inspection tools", async () => {
 
   assert.equal(calls[0].options.input, "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\nInspect the project");
   assert.deepEqual(calls[0].args, [
-    "-p", "--output-format", "json", "--max-turns", "10",
+    "-p", "--output-format", "json",
     "--allowedTools", "Read,Bash(git diff *),Bash(git status *),Bash(npm test),Bash(npm test *),Bash(node --check *)",
   ]);
 });

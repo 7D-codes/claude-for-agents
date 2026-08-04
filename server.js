@@ -39,7 +39,7 @@ const delegateSchema = {
   task: z.string().min(1),
   work_dir: z.string().optional(),
   model: z.string().optional(),
-  max_turns: z.number().int().min(1).max(99).default(10),
+  max_turns: z.number().int().min(1).max(99).optional(),
   policy: z.enum(["code", "review"]).optional(),
   readonly: z.boolean().default(false),
   background: z.boolean().default(false),
@@ -69,7 +69,7 @@ server.tool(
     session_id: z.string().min(1),
     prompt: z.string().min(1),
     model: z.string().optional(),
-    max_turns: z.number().int().min(1).max(99).default(10),
+    max_turns: z.number().int().min(1).max(99).optional(),
   },
   async ({ session_id, prompt, model, max_turns }) => {
     try {
@@ -92,7 +92,7 @@ server.tool(
     work_dir: z.string(),
     scope: z.string().default("current changes"),
     model: z.string().optional(),
-    max_turns: z.number().int().min(1).max(99).default(10),
+    max_turns: z.number().int().min(1).max(99).optional(),
   },
   async ({ work_dir, scope, model, max_turns }) => {
     try {

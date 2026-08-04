@@ -24,7 +24,7 @@ function validateInvocation(model, maxTurns) {
   if (model !== undefined && (typeof model !== "string" || !model.trim())) {
     throw new Error("model must be a non-empty string");
   }
-  if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 99) {
+  if (maxTurns !== undefined && (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 99)) {
     throw new Error("maxTurns must be an integer between 1 and 99");
   }
   return { model: model?.trim(), maxTurns };
@@ -132,10 +132,11 @@ export class ClaudeBridge {
     return this.status(jobId);
   }
 
-  async delegate({ task, workDir, model, maxTurns = 10, policy, readonly = false, signal }) {
+  async delegate({ task, workDir, model, maxTurns, policy, readonly = false, signal }) {
     ({ model, maxTurns } = validateInvocation(model, maxTurns));
     const activePolicy = getPolicy(readonly ? "review" : (policy || "code"));
-    const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
+    const args = ["-p", "--output-format", "json"];
+    if (maxTurns !== undefined) args.push("--max-turns", String(maxTurns));
     if (model) args.push("--model", model);
     args.push("--allowedTools", activePolicy.allowedTools);
     const input = promptFor(activePolicy, task);
@@ -153,19 +154,20 @@ export class ClaudeBridge {
     }
   }
 
-  async continue({ sessionId, prompt, model, maxTurns = 10 }) {
+  async continue({ sessionId, prompt, model, maxTurns }) {
     ({ model, maxTurns } = validateInvocation(model, maxTurns));
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Unknown Claude session: ${sessionId}`);
     const activePolicy = getPolicy(session.policy);
-    const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
+    const args = ["-p", "--output-format", "json"];
+    if (maxTurns !== undefined) args.push("--max-turns", String(maxTurns));
     if (model) args.push("--model", model);
     args.push("--allowedTools", activePolicy.allowedTools, "--resume", sessionId);
     const outcome = await this.#invoke(args, session.workDir, promptFor(activePolicy, prompt));
     return { ...outcome, args };
   }
 
-  async review({ workDir, scope = "current changes", model, maxTurns = 10 }) {
+  async review({ workDir, scope = "current changes", model, maxTurns }) {
     const task = "Review current changes for bugs, security issues, regressions, and missing tests. " +
       `Scope: ${scope}. Run only allowed read-only checks if useful. Do not edit files or run state-changing commands.`;
     return this.delegate({ task, workDir, model, maxTurns, policy: "review" });
