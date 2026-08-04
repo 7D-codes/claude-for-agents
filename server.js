@@ -13,7 +13,7 @@ const claudeBin = process.env.CLAUDE_BIN || "claude";
 const statePath = process.env.CLAUDE_FOR_HERMES_STATE || join(homedir(), ".claude-for-hermes", "state.json");
 const projectRoot = approvedProjectRoot();
 const bridge = new ClaudeBridge({ claudeBin, run: runProcess, stateStore: new FileStateStore(statePath) });
-const server = new McpServer({ name: "claude-for-hermes", version: "0.1.0" });
+const server = new McpServer({ name: "claude-for-hermes", version: "0.2.0" });
 
 function projectDir(input) {
   return resolveProjectDir(input, { root: projectRoot });

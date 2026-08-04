@@ -1,6 +1,6 @@
 {
   "name": "claude-for-hermes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "An MCP server that lets Hermes delegate coding work to Claude Code.",
