@@ -1,19 +1,18 @@
 #!/usr/bin/env node
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { ClaudeBridge } from "./src/core.js";
+import { stateFilePath } from "./src/config.js";
 import { runProcess } from "./src/runner.js";
 import { FileStateStore } from "./src/state.js";
 import { approvedProjectRoot, resolveProjectDir } from "./src/workspace.js";
 
 const claudeBin = process.env.CLAUDE_BIN || "claude";
-const statePath = process.env.CLAUDE_FOR_HERMES_STATE || join(homedir(), ".claude-for-hermes", "state.json");
+const statePath = stateFilePath();
 const projectRoot = approvedProjectRoot();
 const bridge = new ClaudeBridge({ claudeBin, run: runProcess, stateStore: new FileStateStore(statePath) });
-const server = new McpServer({ name: "claude-for-hermes", version: "0.2.0" });
+const server = new McpServer({ name: "claude-for-agents", version: "0.3.0" });
 
 function projectDir(input) {
   return resolveProjectDir(input, { root: projectRoot });

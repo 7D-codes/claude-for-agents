@@ -21,7 +21,8 @@ function contains(root, path) {
 }
 
 export function approvedProjectRoot(env = process.env, home = homedir()) {
-  const configured = env.CLAUDE_FOR_HERMES_PROJECT_ROOT?.trim();
+  const configured = env.CLAUDE_FOR_AGENTS_PROJECT_ROOT?.trim()
+    || env.CLAUDE_FOR_HERMES_PROJECT_ROOT?.trim();
   const root = resolve(expandHome(configured || join(home, DEFAULT_PROJECT_ROOT), home));
   return realpathSync(existingDirectory(root, "approved project root"));
 }

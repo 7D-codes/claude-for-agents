@@ -20,6 +20,26 @@ test("approved project root defaults to ~/Projects and accepts a project inside 
   );
 });
 
+test("prefers the Claude for Agents project-root setting while accepting the legacy alias", () => {
+  const base = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-agents-config-"));
+  const current = join(base, "current");
+  const legacy = join(base, "legacy");
+  mkdirSync(current);
+  mkdirSync(legacy);
+  try {
+    assert.equal(
+      approvedProjectRoot({
+        CLAUDE_FOR_AGENTS_PROJECT_ROOT: current,
+        CLAUDE_FOR_HERMES_PROJECT_ROOT: legacy,
+      }),
+      current,
+    );
+    assert.equal(approvedProjectRoot({ CLAUDE_FOR_HERMES_PROJECT_ROOT: legacy }), legacy);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test("rejects traversal out of a configured project root, including sibling name prefixes", () => {
   const base = mkdtempSync(join(realpathSync(tmpdir()), "claude-for-hermes-roots-"));
   const root = join(base, "root");

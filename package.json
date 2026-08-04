@@ -1,9 +1,9 @@
 {
-  "name": "claude-for-hermes",
-  "version": "0.2.0",
+  "name": "claude-for-agents",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "An MCP server that lets Hermes delegate coding work to Claude Code.",
+  "description": "A local MCP server that lets compatible agents delegate work to Claude Code.",
   "scripts": {
     "test": "node --test"
   },
