@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -228,6 +228,34 @@ test("runner writes supplied input to stdin and closes it", async () => {
 
   assert.equal(completed.code, 0);
   assert.equal(completed.stdout, "prompt over stdin\n");
+});
+
+test("runner cancellation terminates the entire subprocess group", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "claude-for-hermes-cancel-"));
+  const marker = join(directory, "grandchild-survived");
+  const grandchild = `setTimeout(() => require("node:fs").writeFileSync(${JSON.stringify(marker)}, "alive"), 300)`;
+  const parent = [
+    "const { spawn } = require('node:child_process');",
+    `spawn(process.execPath, ["-e", ${JSON.stringify(grandchild)}], { stdio: "ignore" });`,
+    "setInterval(() => {}, 1000);",
+  ].join("\n");
+  const controller = new AbortController();
+
+  try {
+    const completion = runProcess(process.execPath, ["-e", parent], {
+      signal: controller.signal,
+      killGraceMs: 50,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    controller.abort();
+    const completed = await completion;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    assert.equal(completed.signal, "SIGTERM");
+    assert.equal(existsSync(marker), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("readonly delegation constrains Claude to inspection tools", async () => {
