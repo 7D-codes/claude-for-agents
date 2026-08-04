@@ -5,7 +5,8 @@
   "type": "module",
   "description": "A local MCP server that lets compatible agents delegate work to Claude Code.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "smoke": "node scripts/smoke-mcp.js"
   },
   "engines": {
     "node": ">=20"

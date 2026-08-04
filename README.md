@@ -1,90 +1,137 @@
-# Claude for Hermes
+# Claude for Agents
 
-A local MCP server that lets **Hermes supervise Claude Code** in the same way [`kimi-for-claude`](https://github.com/7D-codes/kimi-for-claude) lets Claude Code supervise Kimi.
+Use the authenticated **Claude Code CLI as a persistent, permission-controlled worker from any stdio MCP-compatible agent**.
 
-You keep talking to Hermes in your normal chat. Hermes delegates focused coding, research, or review work to the authenticated official Claude Code CLI, receives a concise result, and remains the ongoing manager of the conversation.
+Claude for Agents is a local Node.js MCP server. A supervisor such as Hermes or Codex can delegate focused implementation or review work, receive structured telemetry, and continue the exact Claude session later.
 
 ## Architecture
 
 ```text
-You → Hermes (ongoing conversation) → claude-for-hermes MCP → Claude Code worker
-                                 ← result / session ID ←
+You → MCP-compatible supervisor → Claude for Agents → Claude Code worker
+                              ← result / session ID ←
 ```
 
-A Claude worker invocation uses Claude Code print mode (`claude -p`) so it can run autonomously. That does **not** make the Hermes conversation one-shot:
-
-- Hermes remains the supervisor in the same conversation.
-- `claude_delegate` starts a worker task and returns its exact Claude session ID.
-- `claude_continue` resumes that exact worker session for fixes or follow-ups.
-- Delegate and continuation calls support up to 99 turns.
-- Max-turn failures retain their Claude session ID. Trusted session metadata is restored from the owner-only state file after an MCP process restart.
-- Background work can run while Hermes continues other work.
+The bridge uses Claude Code print mode (`claude -p`) for autonomous worker calls while the host agent remains the supervisor.
 
 ## Tools
 
 | Tool | Purpose |
 | --- | --- |
-| `claude_delegate` | Start a Claude Code task. Supports a project directory, model override, read-only mode, and background execution. |
-| `claude_continue` | Continue a worker by its exact session ID rather than whichever session is newest in a directory; accepts an optional model override for the follow-up. |
-| `claude_status` | List every background job or inspect one job's current state/result. |
-| `claude_cancel` | Stop a running background worker. |
-| `claude_review` | Run a constrained read-only review with explicit, validated model and turn-budget overrides. |
+| `claude_delegate` | Start a Claude Code task with project, model, policy, turn-budget, and background options. |
+| `claude_continue` | Resume the exact stored Claude session, optionally with a model override. |
+| `claude_status` | List background jobs or inspect one job's state and result. |
+| `claude_cancel` | Stop a running background worker and its subprocess tree. |
+| `claude_review` | Run a constrained, read-only review. |
 
 ## Safety model
 
-- Work is restricted to the approved project root. It defaults to `~/Projects` and can be changed with `CLAUDE_FOR_HERMES_PROJECT_ROOT`; traversal and symlink escapes are rejected.
-- `claude_review` and `readonly: true` use the immutable `review` policy; continued review sessions retain that policy.
-- Normal delegation uses the named `code` policy. Both policies use explicit Claude tool allowlists; the bridge does not use `--dangerously-skip-permissions`.
-- Worker prompts are sent on stdin rather than command-line arguments.
-- Delegation results and tracked background-job status preserve Claude's structured result telemetry (including parsed output events, timing/usage fields when supplied, stderr, and exit status).
-- Unknown sessions cannot be resumed merely by supplying a directory; restart recovery comes only from an owner-only (`0600`) JSON state file at `~/.claude-for-hermes/state.json` (or `CLAUDE_FOR_HERMES_STATE`).
-- Completed/failed jobs and session metadata persist across bridge restarts with stable IDs; jobs active during a restart are reported as `interrupted` and are never falsely resumed.
-- Background cancellation terminates Claude's complete subprocess group with `SIGTERM`, then escalates to `SIGKILL` after a bounded grace period so child processes are not orphaned.
-- Claude Code must already be installed and authenticated locally.
+- Work is restricted to an approved project root, defaulting to `~/Projects`.
+- `review` is immutable across continuation and uses an inspection-only tool allowlist.
+- `code` uses an explicit editing/testing allowlist; the bridge never uses `--dangerously-skip-permissions`.
+- Worker prompts travel over stdin rather than command-line arguments.
+- Sessions and job history persist in an owner-only (`0600`) state file.
+- Jobs active during a bridge restart become `interrupted`; they are never falsely resumed.
+- Cancellation targets the full subprocess group with bounded `SIGTERM` → `SIGKILL` escalation.
+- The official Claude Code CLI must already be installed and authenticated locally.
 
-## Install for Hermes
+## Install with an agent skill
+
+The repository includes a portable [Agent Skill](https://skills.sh/) that can install, configure, verify, operate, and troubleshoot the bridge:
 
 ```bash
-cd ~/Projects/claude-for-hermes
-npm install
-hermes mcp add claude_for_hermes \
+npx skills add 7D-codes/claude-for-agents --skill claude-for-agents
+```
+
+The skill supports Hermes and Codex directly and provides the stdio configuration contract for other MCP hosts. The skill is procedural guidance; the bridge runtime remains source-hosted in this GitHub repository and is not published as an npm package.
+
+## Install from source
+
+Requirements:
+
+- Node.js 20+
+- Git
+- Official Claude Code CLI, authenticated with `claude auth login`
+- An MCP host that supports local stdio servers
+
+```bash
+git clone https://github.com/7D-codes/claude-for-agents.git ~/Projects/claude-for-agents
+cd ~/Projects/claude-for-agents
+npm ci
+npm test
+npm run smoke
+```
+
+### Hermes
+
+```bash
+cd ~/Projects/claude-for-agents
+hermes mcp add claude_for_agents \
   --command "$(command -v node)" \
   --connect-timeout 20 \
   --args "$PWD/server.js"
+hermes mcp test claude_for_agents
 ```
 
-Then start a new Hermes session so it discovers the MCP tools. Confirm the server can connect:
+Start a new Hermes session after registration so the five tools are loaded.
+
+### Codex CLI
 
 ```bash
-hermes mcp test claude_for_hermes
+cd ~/Projects/claude-for-agents
+codex mcp add claude_for_agents -- "$(command -v node)" "$PWD/server.js"
+codex mcp get claude_for_agents
 ```
 
-Optional runtime paths:
+Restart Codex after registration. Ask it to list the tools exposed by `claude_for_agents`, then begin with a read-only `claude_review` or a narrowly scoped `claude_delegate` call.
 
-```bash
-export CLAUDE_FOR_HERMES_PROJECT_ROOT="$HOME/Projects"
-export CLAUDE_FOR_HERMES_STATE="$HOME/.claude-for-hermes/state.json"
+### Other MCP hosts
+
+Register this stdio server using absolute paths:
+
+```json
+{
+  "command": "/absolute/path/to/node",
+  "args": ["/absolute/path/to/claude-for-agents/server.js"]
+}
 ```
+
+Do not place the command and arguments into one shell string unless the host explicitly requires that format.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CLAUDE_BIN` | `claude` | Claude Code executable. |
+| `CLAUDE_FOR_AGENTS_PROJECT_ROOT` | `~/Projects` | Approved root containing worker projects. |
+| `CLAUDE_FOR_AGENTS_STATE` | `~/.claude-for-agents/state.json` | Persistent sessions and job history. |
+
+The legacy `CLAUDE_FOR_HERMES_PROJECT_ROOT` and `CLAUDE_FOR_HERMES_STATE` names remain accepted. If the new default state file does not exist but `~/.claude-for-hermes/state.json` does, the bridge reuses the legacy file automatically.
+
+Environment variables must be configured on the MCP subprocess through the host, not merely exported in an unrelated shell.
 
 ## Example requests
 
-In a Hermes chat:
+> Ask Claude to implement the API validation work in `~/Projects/my-app`, run the relevant tests, and report the changed files.
 
-> Ask Claude to implement the API validation work in `~/Projects/my-app`. Keep the task focused, run the relevant tests, and report the changed files.
+> Ask Claude to inspect the authentication module using the review policy and identify security risks without editing files.
 
-> Ask Claude to inspect the authentication module in read-only mode and identify security risks.
-
-> Continue Claude session `<session-id>`: fix the failing tests and report the outcome.
+> Continue Claude session `<session-id>`: address the review findings and rerun the focused tests.
 
 ## Development
 
 ```bash
 npm test
+npm run smoke
 node --check server.js
 node --check src/core.js
+node --check src/config.js
 node --check src/runner.js
 node --check src/state.js
 node --check src/workspace.js
 ```
 
-The test suite covers exact worker-session continuation, immutable read-only restrictions, persistent job tracking, process-group cancellation, subprocess stdin/output handling, workspace containment, review configuration, and actionable authentication failures.
+The suite covers exact-session continuation, immutable review restrictions, persistent jobs, process-group cancellation, stdin transport, structured output, workspace containment, configuration migration, review settings, and authentication failures.
+
+## License
+
+[MIT](LICENSE)
