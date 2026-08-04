@@ -162,6 +162,48 @@ test("review is constrained to read and git diff commands", async () => {
   ]);
 });
 
+test("review accepts an explicit model and turn budget", async () => {
+  const calls = [];
+  const bridge = new ClaudeBridge({
+    run: async (command, args) => {
+      calls.push(args);
+      return {
+        code: 0,
+        stdout: JSON.stringify({ type: "result", subtype: "success", session_id: "review-configured", result: "done" }),
+        stderr: "",
+      };
+    },
+  });
+
+  await bridge.review({ workDir: "/tmp/project", model: "claude-opus-5", maxTurns: 20 });
+
+  assert.deepEqual(calls[0].slice(0, 7), [
+    "-p", "--output-format", "json", "--max-turns", "20", "--model", "claude-opus-5",
+  ]);
+});
+
+test("review rejects an empty model before starting Claude", async () => {
+  let invoked = false;
+  const bridge = new ClaudeBridge({ run: async () => { invoked = true; } });
+
+  await assert.rejects(
+    () => bridge.review({ workDir: "/tmp/project", model: "   " }),
+    /model must be a non-empty string/,
+  );
+  assert.equal(invoked, false);
+});
+
+test("review rejects an invalid turn budget before starting Claude", async () => {
+  let invoked = false;
+  const bridge = new ClaudeBridge({ run: async () => { invoked = true; } });
+
+  await assert.rejects(
+    () => bridge.review({ workDir: "/tmp/project", maxTurns: 100 }),
+    /maxTurns must be an integer between 1 and 99/,
+  );
+  assert.equal(invoked, false);
+});
+
 test("background delegation exposes tracked status after completion", async () => {
   let resolveRun;
   const bridge = new ClaudeBridge({

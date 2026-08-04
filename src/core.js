@@ -20,6 +20,16 @@ function promptFor(policy, prompt) {
   return "IMPORTANT: This is a READ-ONLY task. Do not edit files or run state-changing commands.\n\n" + prompt;
 }
 
+function validateInvocation(model, maxTurns) {
+  if (model !== undefined && (typeof model !== "string" || !model.trim())) {
+    throw new Error("model must be a non-empty string");
+  }
+  if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 99) {
+    throw new Error("maxTurns must be an integer between 1 and 99");
+  }
+  return { model: model?.trim(), maxTurns };
+}
+
 function parseClaudeOutput(stdout) {
   const text = stdout.trim();
   if (!text) return { payload: undefined, events: [] };
@@ -123,6 +133,7 @@ export class ClaudeBridge {
   }
 
   async delegate({ task, workDir, model, maxTurns = 10, policy, readonly = false, signal }) {
+    ({ model, maxTurns } = validateInvocation(model, maxTurns));
     const activePolicy = getPolicy(readonly ? "review" : (policy || "code"));
     const args = ["-p", "--output-format", "json", "--max-turns", String(maxTurns)];
     if (model) args.push("--model", model);
@@ -143,6 +154,7 @@ export class ClaudeBridge {
   }
 
   async continue({ sessionId, prompt, model, maxTurns = 10 }) {
+    ({ model, maxTurns } = validateInvocation(model, maxTurns));
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error(`Unknown Claude session: ${sessionId}`);
     const activePolicy = getPolicy(session.policy);
