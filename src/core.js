@@ -187,7 +187,7 @@ export class ClaudeBridge {
       const details = (completed.stderr || completed.stdout || "no output").trim();
       const message = payload?.result || details;
       if (/authenticate|oauth session expired|not logged in/i.test(message)) {
-        const error = new Error("Claude Code authentication failed. Run `claude auth login` in a terminal, then retry.");
+        const error = new Error("Claude Code authentication failed. On macOS, background or launchd hosts may not see your Terminal Keychain login. Run `claude setup-token`, set `CLAUDE_CODE_OAUTH_TOKEN` in the MCP server environment, restart the host, and retry.");
         if (payload?.session_id) error.sessionId = payload.session_id;
         error.telemetry = telemetry;
         throw error;

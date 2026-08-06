@@ -330,7 +330,7 @@ test("status lists every background job when no job ID is provided", () => {
   assert.deepEqual(bridge.status(), [{ jobId: job.jobId, state: "running" }]);
 });
 
-test("authentication errors give an actionable Claude Code login instruction", async () => {
+test("authentication errors explain the macOS background-login issue and token workaround", async () => {
   const bridge = new ClaudeBridge({
     run: async () => ({
       code: 1,
@@ -341,7 +341,7 @@ test("authentication errors give an actionable Claude Code login instruction", a
 
   await assert.rejects(
     () => bridge.delegate({ task: "Implement feature X", workDir: "/tmp/project" }),
-    /Claude Code authentication failed\. Run `claude auth login` in a terminal, then retry\./,
+    /Claude Code authentication failed\. On macOS, background or launchd hosts may not see your Terminal Keychain login\. Run `claude setup-token`, set `CLAUDE_CODE_OAUTH_TOKEN` in the MCP server environment, restart the host, and retry\./,
   );
 });
 

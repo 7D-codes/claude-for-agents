@@ -32,7 +32,7 @@ The bridge uses Claude Code print mode (`claude -p`) for autonomous worker calls
 - Sessions and job history persist in an owner-only (`0600`) state file.
 - Jobs active during a bridge restart become `interrupted`; they are never falsely resumed.
 - Cancellation targets the full subprocess group with bounded `SIGTERM` → `SIGKILL` escalation.
-- The official Claude Code CLI must already be installed and authenticated locally.
+- The official Claude Code CLI must already be installed and authenticated locally, either through normal login or `CLAUDE_CODE_OAUTH_TOKEN`.
 
 ## Install with an agent skill
 
@@ -50,8 +50,39 @@ Requirements:
 
 - Node.js 20+
 - Git
-- Official Claude Code CLI, authenticated with `claude auth login`
+- Official Claude Code CLI, authenticated normally or with a subscription token
 - An MCP host that supports local stdio servers
+
+### Authentication
+
+Normal Claude Code authentication is not automatic: install the official CLI and run `claude auth login` before using the bridge. That login may still intermittently report **not authorized** or **logged out** when an MCP host runs in the background on macOS. In particular, a `launchd`-started host may not be able to access or refresh the same Keychain-backed Claude session that works in Terminal. This is a Claude Code process-context/Keychain issue, not a separate account or login inside Claude for Agents.
+
+For reliable background use, create a Claude subscription token:
+
+```bash
+claude setup-token
+```
+
+Securely provide the resulting value to the MCP server as `CLAUDE_CODE_OAUTH_TOKEN`, restart the MCP host, and retry the delegation. This uses your Claude subscription; it is not an `ANTHROPIC_API_KEY` and does not switch the bridge to separate API billing.
+
+For Hermes, keep the token in the secret file `~/.hermes/.env`:
+
+```dotenv
+CLAUDE_CODE_OAUTH_TOKEN=<paste the setup token here>
+```
+
+Then reference it from the MCP server environment without embedding the token in `config.yaml`:
+
+```yaml
+mcp_servers:
+  claude_for_agents:
+    command: "/absolute/path/to/node"
+    args: ["/absolute/path/to/claude-for-agents/server.js"]
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: "${CLAUDE_CODE_OAUTH_TOKEN}"
+```
+
+Restart Hermes after adding the secret. Never commit the token or paste it into prompts, logs, screenshots, issues, or support messages.
 
 ```bash
 git clone https://github.com/7D-codes/claude-for-agents.git ~/Projects/claude-for-agents
@@ -102,6 +133,7 @@ Do not place the command and arguments into one shell string unless the host exp
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CLAUDE_BIN` | `claude` | Claude Code executable. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | unset | Claude subscription token for reliable background/headless authentication. |
 | `CLAUDE_FOR_AGENTS_PROJECT_ROOT` | `~/Projects` | Approved root containing worker projects. |
 | `CLAUDE_FOR_AGENTS_STATE` | `~/.claude-for-agents/state.json` | Persistent sessions and job history. |
 
